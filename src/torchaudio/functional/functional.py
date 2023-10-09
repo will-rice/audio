@@ -18,7 +18,7 @@ __all__ = [
     "inverse_spectrogram",
     "griffinlim",
     "amplitude_to_DB",
-    "DB_to_power",
+    "DB_to_amplitude",
     "compute_deltas",
     "melscale_fbanks",
     "linear_fbanks",
@@ -51,7 +51,7 @@ __all__ = [
     "speed",
     "preemphasis",
     "deemphasis",
-    "DB_to_amplitude",
+    "DB_to_power",
     "power_to_DB",
 ]
 
