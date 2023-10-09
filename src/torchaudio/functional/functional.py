@@ -18,7 +18,7 @@ __all__ = [
     "inverse_spectrogram",
     "griffinlim",
     "amplitude_to_DB",
-    "DB_to_amplitude",
+    "DB_to_power",
     "compute_deltas",
     "melscale_fbanks",
     "linear_fbanks",
@@ -51,6 +51,8 @@ __all__ = [
     "speed",
     "preemphasis",
     "deemphasis",
+    "DB_to_amplitude",
+    "power_to_DB",
 ]
 
 
@@ -2531,3 +2533,68 @@ def frechet_distance(mu_x, sigma_x, mu_y, sigma_y):
     b = sigma_x.trace() + sigma_y.trace()
     c = torch.linalg.eigvals(sigma_x @ sigma_y).sqrt().real.sum()
     return a + b - 2 * c
+
+
+def power_to_DB(x: Tensor, amin: float, db_multiplier: float, top_db: Optional[float] = None) -> Tensor:
+    r"""Turn a spectrogram from the power scale to the decibel scale.
+
+    .. devices:: CPU CUDA
+
+    .. properties:: Autograd TorchScript
+
+    The output of each tensor in a batch depends on the maximum value of that tensor,
+    and so may return different values for an audio clip split into snippets vs. a full clip.
+
+    Args:
+
+        x (Tensor): Input spectrogram(s) before being converted to decibel scale.
+            The expected shapes are ``(freq, time)``, ``(channel, freq, time)`` or
+            ``(..., batch, channel, freq, time)``.
+
+            .. note::
+
+               When ``top_db`` is specified, cut-off values are computed for each audio
+               in the batch. Therefore if the input shape is 4D (or larger), different
+               cut-off values are used for audio data in the batch.
+               If the input shape is 2D or 3D, a single cutoff value is used.
+
+        amin (float): Number to clamp ``x``
+        db_multiplier (float): Log10(max(reference value and amin))
+        top_db (float or None, optional): Minimum negative cut-off in decibels. A reasonable number
+            is 80. (Default: ``None``)
+
+    Returns:
+        Tensor: Output tensor in decibel scale
+    """
+    x_db = 10 * torch.log10(torch.clamp(x, min=amin))
+    x_db -= 10.0 * torch.log10(torch.max(amin, db_multiplier))
+
+    if top_db is not None:
+        # Expand batch
+        shape = x_db.size()
+        packed_channels = shape[-3] if x_db.dim() > 2 else 1
+        x_db = x_db.reshape(-1, packed_channels, shape[-2], shape[-1])
+
+        x_db = torch.max(x_db, (x_db.amax(dim=(-3, -2, -1)) - top_db).view(-1, 1, 1, 1))
+
+        # Repack batch
+        x_db = x_db.reshape(shape)
+
+    return x_db
+
+
+def DB_to_power(x: Tensor, ref: Optional[float] = 1.0) -> Tensor:
+    r"""Turn a tensor from the decibel scale to the power scale.
+
+    .. devices:: CPU CUDA
+
+    .. properties:: TorchScript
+
+    Args:
+        x (Tensor): Input tensor before being converted to power scale.
+        ref (float): Reference which the output will be scaled by.
+
+    Returns:
+        Tensor: Output tensor in power scale.
+    """
+    return ref * torch.pow(10.0, 0.1 * x)
